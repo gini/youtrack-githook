@@ -1,4 +1,3 @@
-import json
 import re
 import dateutil.parser
 from flask import Flask, request, Response
@@ -57,7 +56,8 @@ def receive_hook():
                     issue = yt.getIssue(ref)
                     comment_string = 'Commit [%(url)s %(id)s] made by %(author)s on %(date)s\n{quote}%(message)s{quote}' % {'url': commit['url'], 'id': commit['id'], 'author': commit['author']['name'], 'date': str(commit_time), 'message': commit['message']}
                     app.logger.debug(comment_string)
-                    yt.executeCommand(issueId=ref, command='comment', comment=comment_string, run_as=user)
+                    yt.executeCommand(issueId=ref, command='comment', comment=comment_string.encode('utf-8'),
+                                      run_as=user.encode('utf-8'))
                 except YouTrackException:
                     app.logger.warn('''Couldn't find issue %s''', ref)
     return Response('Payload processed. Thanks!', mimetype='text/plain')
