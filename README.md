@@ -42,13 +42,13 @@ The easiest way to start developing is using virtualenv:
 Support
 -------
 
-Please log tickets and issues at our [project site](https://github.com/smarchive/youtrack-githook/issues).
+Please log tickets and issues at our [project site](https://github.com/gini/youtrack-githook/issues).
 
 
 License
 -------
 
-Copyright (c) 2013 smarchive GmbH
+Copyright (c) 2013 smarchive GmbH, Gini GmbH
 
 This script is licensed under the Apache License, Version 2.0.
 
