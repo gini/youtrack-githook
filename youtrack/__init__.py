@@ -2,9 +2,12 @@
 YouTrack 2.0 REST API
 """
 
+import re
 from xml.dom import Node
 from xml.dom.minidom import Document
 from xml.dom import minidom
+
+
 EXISTING_FIELD_TYPES = {
     'numberInProject'   :   'integer',
     'summary'           :   'string',
@@ -40,6 +43,9 @@ class YouTrackException(Exception):
                     self.error = content
                     msg += ": " + self.error
 
+        if isinstance(msg, unicode):
+            msg = msg.encode('utf-8')
+
         Exception.__init__(self, msg)
 
 
@@ -73,6 +79,8 @@ class YouTrackObject(object):
                 name = c.getAttribute('name')
                 if not len(name):
                     continue
+                if isinstance(name, unicode):
+                    name = name.encode('utf-8')
                 values = c.getElementsByTagName('value')
                 if (values is not None) and len(values):
                     if values.length == 1:
@@ -81,20 +89,28 @@ class YouTrackObject(object):
                         setattr(self, name, [self._text(value) for value in values])
                 elif c.hasAttribute('value'):
                     value = c.getAttribute("value")
-                    setattr(self, name.encode('utf-8'), value)
+                    setattr(self, name, value)
 
     def _text(self, el):
         return "".join([e.data for e in el.childNodes if e.nodeType == Node.TEXT_NODE])
 
     def __repr__(self):
-        return "".join(
-            [(k + ' = ' + unicode(self.__dict__[k]) + '\n') for k in self.__dict__.iterkeys() if k != 'youtrack'])
+        _repr = ''
+        for k, v in self.__dict__.items():
+            if k == 'youtrack':
+                continue
+            if isinstance(k, unicode):
+                k = k.encode('utf-8')
+            if isinstance(v, unicode):
+                v = v.encode('utf-8')
+            _repr += k + ' = ' + str(v) + '\n'
+        return _repr
 
     def __iter__(self):
         for item in self.__dict__:
             attr = self.__dict__[item]
-            if isinstance(attr, str) or isinstance(attr, unicode) or isinstance(attr, list) or getattr(attr, '__iter__',
-                False):
+            if isinstance(attr, basestring) or isinstance(attr, list) \
+            or getattr(attr, '__iter__', False):
                 yield item
 
     def __getitem__(self, key):
@@ -134,11 +150,14 @@ class Issue(YouTrackObject):
 
     def _normilizeMultiple(self, name):
         if hasattr(self, name):
-            if not isinstance(self[name], list):
-                if self[name] == '' or self[name] is None:
+            attrValue = self[name]
+            if not isinstance(attrValue, list):
+                if isinstance(attrValue, unicode):
+                    attrValue = attrValue.encode('utf-8')
+                if attrValue is None or not len(attrValue):
                     delattr(self, name)
                 else:
-                    self[name] = [value.strip() for value in str(self[name]).split(',')]
+                    self[name] = [value.strip() for value in attrValue.split(',')]
 
     def getReporter(self):
         return self.youtrack.getUser(self.reporterName)
@@ -151,6 +170,18 @@ class Issue(YouTrackObject):
 
     def getUpdater(self):
         return self.youtrack.getUser(self.updaterName)
+
+    def hasVoters(self):
+        return getattr(self, 'voterName', None) is not None
+
+    def getVoters(self):
+        voters = self.voterName
+        if voters:
+            if isinstance(voters, list):
+                voters = [self.youtrack.getUser(v) for v in voters]
+            else:
+                voters = [self.youtrack.getUser(voters)]
+        return voters
 
     def getComments(self):
         #TODO: do not make rest request if issue was initied with comments
@@ -240,9 +271,11 @@ class Link(YouTrackObject):
 class Attachment(YouTrackObject):
     def __init__(self, xml=None, youtrack=None):
         YouTrackObject.__init__(self, xml, youtrack)
+        # Workaround for JT-18936
+        self.url = re.sub(r'^.*?(?=/_persistent)', '', self.url)
 
     def getContent(self):
-        return self.youtrack.getAttachmentContent(self.url.encode('utf8'))
+        return self.youtrack.getAttachmentContent(self.url.encode('utf-8'))
 
     def getAuthor(self):
         if self.authorLogin == '<no user>':
@@ -471,10 +504,17 @@ class BundleElement(YouTrackObject):
 
     def toXml(self):
         result = '<' + self.element_name
-        result += ''.join(
-            " " + elem + '="' + self[elem] + '"' for elem in self if elem not in ["name", "element_name"] and (
-            self[elem] is not None) and (
-                len(self[elem]) != 0))
+        for elem in self:
+            if elem in ("name", "element_name"):
+                continue
+            value = self[elem]
+            if value is None or not len(value):
+                continue
+            if isinstance(elem, unicode):
+                elem = elem.encode('utf-8')
+            if isinstance(value, unicode):
+                value = value.encode('utf-8')
+            result += ' %s="%s"' % (elem, str(value))
         result += ">%s</%s>" % (self.name.encode('utf-8'), self.element_name)
         return result
 
@@ -578,3 +618,71 @@ class VersionField(BundleElement):
         self.released = xml.getAttribute("released").lower() == "true"
         self.archived = xml.getAttribute("archived").lower() == "true"
 
+
+class IntelliSense(YouTrackObject):
+    def __init__(self, xml=None, youtrack=None):
+        self.suggestions = []
+        self.highlights = []
+        self.queries = []
+        YouTrackObject.__init__(self, xml, youtrack)
+
+    def _update(self, xml):
+        if not xml:
+            return
+        if isinstance(xml, Document):
+            xml = xml.documentElement
+        for c in xml.childNodes:
+            if c.tagName in ('suggest', 'recent'):
+                for item in c.getElementsByTagName('item'):
+                    suggest = {}
+                    for i in item.childNodes:
+                        if i.tagName in ('completion', 'match'):
+                            suggest[i.tagName] = {
+                                'start': int(i.getAttribute('start')),
+                                'end': int(i.getAttribute('end'))}
+                        else:
+                            if i.tagName == 'caret':
+                                suggest[i.tagName] = int(self._text(i))
+                            else:
+                                suggest[i.tagName] = self._text(i)
+                    if 'option' not in suggest:
+                        continue
+                    if c.tagName == 'suggest':
+                        self.suggestions.append(suggest)
+                    else:
+                        self.queries.append(suggest)
+            elif c.tagName == 'highlight':
+                for item in c.getElementsByTagName('range'):
+                    rng = {}
+                    for i in item.childNodes:
+                        if i.tagName in ('start', 'end'):
+                            rng[i.tagName] = int(self._text(i))
+                        else:
+                            rng[i.tagName] = self._text(i)
+                    self.highlights.append(rng)
+
+
+class GlobalTimeTrackingSettings(YouTrackObject):
+    def _update(self, xml):
+        if not xml:
+            return
+        if isinstance(xml, Document):
+            xml = xml.documentElement
+        for e in xml.childNodes:
+            self[e.tagName] = self._text(e)
+
+
+class ProjectTimeTrackingSettings(YouTrackObject):
+    def _update(self, xml):
+        if not xml:
+            return
+        if isinstance(xml, Document):
+            xml = xml.documentElement
+        self['Enabled'] = xml.getAttribute('enabled').lower() == 'true'
+        self['EstimateField'] = None
+        self['TimeSpentField'] = None
+        for e in xml.childNodes:
+            if e.tagName.lower() == 'estimation':
+                self['EstimateField'] = e.getAttribute('name')
+            elif e.tagName.lower() == 'spenttime':
+                self['TimeSpentField'] = e.getAttribute('name')
