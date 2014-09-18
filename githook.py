@@ -54,13 +54,13 @@ def push_event_hook():
             for issue_id in issues:
                 app.logger.debug('Processing reference to issue %s', issue_id)
                 try:
-                    issue = yt.getIssue(issue_id)
+                    yt.getIssue(issue_id)
                     comment_string = 'Commit [%(url)s %(id)s] on branch %(refspec)s in [%(repo_homepage)s %(repo_name)s] made by %(author)s on %(date)s\n{quote}%(message)s{quote}' % {'url': commit['url'], 'id': commit['id'], 'author': commit['author']['name'], 'date': str(commit_time), 'message': commit['message'], 'repo_homepage': repo_homepage, 'repo_name': repo_name, 'refspec': refspec}
                     app.logger.debug(comment_string)
                     yt.executeCommand(issueId=issue_id, command='comment', comment=comment_string.encode('utf-8'),
                                       run_as=user_login.encode('utf-8'))
                 except YouTrackException:
-                    app.logger.warn('''Couldn't find issue %s''', ref)
+                    app.logger.warn("Couldn't find issue %s", issue_id)
     return Response('Push event processed. Thanks!', mimetype='text/plain')
 
 
