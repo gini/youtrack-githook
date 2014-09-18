@@ -45,16 +45,11 @@ def push_event_hook():
             app.logger.debug('Found %d referenced issues in commit %s', len(issues), commit['id'])
             yt = Connection(app.config['YOUTRACK_URL'], app.config['YOUTRACK_USERNAME'], app.config['YOUTRACK_PASSWORD'])
 
-            default_user = yt.getUser(app.config['DEFAULT_USER'])
-            user_login = default_user['login']
-
-            users = yt.getUsers({ 'q': commit['author']['email'] })
-            if not users:
-                app.logger.warn('''Couldn't find user with email address %s. Using default user.''', commit['author']['email'])
-            elif len(users) > 1:
-                app.logger.warn('''Found more than one user with email address %s. Using default user.''', commit['author']['email'])
-            else:
-                user_login = users[0]['login']
+            user_login = get_user_login(yt, commit['author']['email'])
+            if user_login is None:
+                app.logger.warn("Couldn't find user with email address %s. Using default user.", commit['author']['email'])
+                default_user = yt.getUser(app.config['DEFAULT_USER'])
+                user_login = default_user['login']
 
             for issue_id in issues:
                 app.logger.debug('Processing reference to issue %s', issue_id)
@@ -67,6 +62,26 @@ def push_event_hook():
                 except YouTrackException:
                     app.logger.warn('''Couldn't find issue %s''', ref)
     return Response('Push event processed. Thanks!', mimetype='text/plain')
+
+
+def get_user_login(yt, email):
+    """Given a youtrack connection and an email address, try to find the login
+    name for a user. Returns `None` if no (unique) user was found.
+    """
+    users = yt.getUsers({'q': email})
+    if len(users) == 1:
+        return users[0]['login']
+    else:
+        # Unfortunately, youtrack does not seem to have an exact search
+        for user in users:
+            try:
+                full_user = yt.getUser(user['login'])
+            except YouTrackException:
+                pass
+            else:
+                if full_user['email'] == email:
+                    return full_user['login']
+    return None
 
 
 if __name__ == '__main__':
