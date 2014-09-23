@@ -8,22 +8,10 @@ It creates a comment in each referenced issue mentioning the author, the commit
 message, and a link to the commit page in GitLab.
 
 
-Configuration
+Documentation
 -------------
 
-TBD
-
-See `settings.cfg`.
-
-
-Deployment
-----------
-
-TBD
-
-    GITHOOK_SETTINGS=settings.cfg python githook.py
-
-Also see [Deployment Options](http://flask.pocoo.org/docs/deploying/) for Flask.
+See the [project's wiki](https://github.com/gini/youtrack-githook/wiki).
 
 
 Development Environment
@@ -49,6 +37,7 @@ License
 -------
 
 Copyright (c) 2013 smarchive GmbH, Gini GmbH
+Copyright (c) 2014 Gini GmbH
 
 This script is licensed under the Apache License, Version 2.0.
 
